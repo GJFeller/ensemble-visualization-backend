@@ -2,6 +2,8 @@ from flask import Flask, Response, request
 import json
 from sklearn import datasets
 from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
+import umap
 import pandas as pd
 import numpy as np
 
@@ -29,13 +31,26 @@ def getIrisDataDr():
         pca = PCA(n_components=2)
         pca.fit(X)
         X = pca.transform(X)
-        print(type(X))
-        X = X.tolist()
-        #for item, idx in X:
-        #    print(item)
-        #    #item.append(y[idx])
+        df = pd.DataFrame(X, columns=['x', 'y'])
+        df['set'] = y
+        df['set'] = df['set'].astype('string')
+        df['set'] = df['set'].map({'0': 'Setosa', '1': 'Versicolour', '2': 'Virginica'})
+        print(df)
         
-        resp = Response(response=json.dumps(X), status=200, mimetype="text/plain")
+        resp = Response(response=df.to_json(orient='records'), status=200, mimetype="text/plain")
+        resp.headers['Access-Control-Allow-Origin'] = '*'
+        return resp
+    elif method == "UMAP":
+        reducer = umap.UMAP()
+        scaled_X = StandardScaler().fit_transform(X)
+        embedding = reducer.fit_transform(scaled_X)
+        df = pd.DataFrame(embedding, columns=['x', 'y'])
+        df['set'] = y
+        df['set'] = df['set'].astype('string')
+        df['set'] = df['set'].map({'0': 'Setosa', '1': 'Versicolour', '2': 'Virginica'})
+        print(df)
+
+        resp = Response(response=df.to_json(orient='records'), status=200, mimetype="text/plain")
         resp.headers['Access-Control-Allow-Origin'] = '*'
         return resp
     else:

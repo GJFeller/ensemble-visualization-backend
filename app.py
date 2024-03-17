@@ -35,9 +35,10 @@ def getIrisDataDr():
         df['set'] = y
         df['set'] = df['set'].astype('string')
         df['set'] = df['set'].map({'0': 'Setosa', '1': 'Versicolour', '2': 'Virginica'})
-        print(df)
+        df['point'] = list(zip(df.x, df.y))
+        grouped = df.groupby('set')['point'].apply(list)
         
-        resp = Response(response=df.to_json(orient='records'), status=200, mimetype="text/plain")
+        resp = Response(response=grouped.to_json(orient='index'), status=200, mimetype="text/plain")
         resp.headers['Access-Control-Allow-Origin'] = '*'
         return resp
     elif method == "UMAP":
@@ -48,9 +49,10 @@ def getIrisDataDr():
         df['set'] = y
         df['set'] = df['set'].astype('string')
         df['set'] = df['set'].map({'0': 'Setosa', '1': 'Versicolour', '2': 'Virginica'})
-        print(df)
+        df['point'] = list(zip(df.x, df.y))
+        grouped = df.groupby('set')['point'].apply(list)
 
-        resp = Response(response=df.to_json(orient='records'), status=200, mimetype="text/plain")
+        resp = Response(response=grouped.to_json(orient='index'), status=200, mimetype="text/plain")
         resp.headers['Access-Control-Allow-Origin'] = '*'
         return resp
     else:

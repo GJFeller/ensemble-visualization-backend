@@ -57,3 +57,11 @@ def getIrisDataDr():
         return resp
     else:
         return "Not available method " + method
+    
+@app.route('/arrecadacao', methods=['GET'])
+def getArrecadacao():
+    df = pd.read_csv('arrecadacao-por-estado.csv', sep=';').fillna(0)
+    print(df)
+
+    resp = Response(response=df.to_json(orient='records'), status=200, mimetype="text/plain")
+    return resp

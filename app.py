@@ -60,8 +60,14 @@ def getIrisDataDr():
     
 @app.route('/arrecadacao', methods=['GET'])
 def getArrecadacao():
-    df = pd.read_csv('arrecadacao-por-estado.csv', sep=';').fillna(0)
-    print(df)
+    df = pd.read_csv('arrecadacao-por-estado.csv', sep=';').fillna(0.0)
+    columns = df.columns.drop(['Ano', 'Mes', 'UF'])
+    df[columns] = df[columns].apply(pd.to_numeric, errors='coerce')
+    df['Total Arrecadacao'] = df[columns].sum(axis=1)
+    grouped = df.groupby(['Ano', 'UF'], as_index=False)['Total Arrecadacao'].sum()
+    grouped = grouped[grouped['Ano'] != 2024]
+    #grouped['Total Arrecadacao'] = grouped['Total Arrecadacao'].apply(lambda x: '{:,.2f}'.format(x))
+    print(grouped)
 
-    resp = Response(response=df.to_json(orient='records'), status=200, mimetype="text/plain")
+    resp = Response(response=grouped.to_json(orient='records'), status=200, mimetype="text/plain")
     return resp

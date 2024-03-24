@@ -61,19 +61,40 @@ def getIrisDataDr():
 @app.route('/arrecadacao', methods=['GET'])
 def getArrecadacao():
     aggregate = request.args.get('aggregate', default=False, type = bool)
+    brazilian_regions = {'Norte': ['AC', 'AP', 'AM', 'PA', 'RO', 'RR', 'TO'], 'Nordeste': ['AL', 'BA', 'CE', 'MA', 'PB', 'PE', 'PI', 'RN', 'SE'], 'Centro-Oeste':
+                         ['DF', 'GO', 'MS', 'MT'], 'Sudeste': ['ES', 'MG', 'RJ', 'SP'], 'Sul': ['PR', 'RS', 'SC']}
+    # inverse mapping
+    state_region = {}
+    for k,v in brazilian_regions.items():
+        for x in v:
+            state_region.setdefault(x, []).append(k)
     df = pd.read_csv('arrecadacao-por-estado.csv', sep=';').fillna(0.0)
     columns = df.columns.drop(['Ano', 'Mes', 'UF'])
     df[columns] = df[columns].apply(pd.to_numeric, errors='coerce')
     df['Total Arrecadacao'] = df[columns].sum(axis=1)
-    grouped = df.groupby(['Ano', 'UF'], as_index=False)['Total Arrecadacao'].sum()
+    df['Regiao'] = df['UF'].apply(lambda x: state_region[x][0])
+    grouped = df.groupby(['Regiao', 'Ano', 'UF'], as_index=False)['Total Arrecadacao'].sum()
     grouped = grouped[grouped['Ano'] != 2024]
-    grouped = grouped.rename(columns={'Ano': 'time', 'UF': 'name', 'Total Arrecadacao': 'value'})
-    #grouped['Total Arrecadacao'] = grouped['Total Arrecadacao'].apply(lambda x: '{:,.2f}'.format(x))
-    print(grouped)
+    grouped = grouped.rename(columns={'Regiao': 'ensemble', 'Ano': 'time', 'UF': 'name', 'Total Arrecadacao': 'value'})
+    groupedStates = grouped.groupby(['ensemble', 'name'])[['time', 'value']].apply(lambda x: x.values.tolist()).to_frame()
+    groupedStates.rename(columns={0: 'points'}, inplace=True)
 
+    # Funcao para transformar o dataframe em um dict hierarquico do formato ensemble -> nome -> lista de pontos
+    def nest(d: dict) -> dict:
+        result = {}
+        for key, value in d.items():
+            target = result
+            for k in key[:-1]:  # traverse all keys but the last
+                target = target.setdefault(k, {})
+            target[key[-1]] = value
+        return result
+
+    nested_dict = {k: nest(v) for k, v in groupedStates.to_dict().items()}
+
+    # TODO: Definir como iremos agregar os dados (estatística? probabilidade?)
     if aggregate:
         return "WIP"
     else:
-        resp = Response(response=grouped.to_json(orient='records'), status=200, mimetype="text/plain")
+        resp = Response(response=json.dumps(nested_dict['points']), status=200, mimetype="text/plain")
         return resp
 

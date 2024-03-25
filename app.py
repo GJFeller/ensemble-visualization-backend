@@ -96,5 +96,6 @@ def getArrecadacao():
         return "WIP"
     else:
         resp = Response(response=json.dumps(nested_dict['points']), status=200, mimetype="text/plain")
+        resp.headers['Access-Control-Allow-Origin'] = '*'
         return resp
 

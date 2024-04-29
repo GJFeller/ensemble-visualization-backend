@@ -1,4 +1,6 @@
 from flask import Flask, Response, request
+from surrealdb import Surreal
+import asyncio
 import json
 from sklearn import datasets
 from sklearn.decomposition import PCA
@@ -9,10 +11,52 @@ import numpy as np
 
 app = Flask(__name__)
 dr_methods = ['PCA', 'UMAP']
+brazilian_regions = {
+    'Norte': ['AC', 'AP', 'AM', 'PA', 'RO', 'RR', 'TO'], 
+    'Nordeste': ['AL', 'BA', 'CE', 'MA', 'PB', 'PE', 'PI', 'RN', 'SE'], 
+    'Centro-Oeste': ['DF', 'GO', 'MS', 'MT'], 
+    'Sudeste': ['ES', 'MG', 'RJ', 'SP'], 
+    'Sul': ['PR', 'RS', 'SC']
+    }
+
+async def connect_db():
+    async with Surreal("ws://localhost:8000/rpc") as db:
+        #try:
+            # Authentication
+            await db.signin({"user": "root", "pass": "root"})
+            await db.use("ensemble", "ensemble")
+            # Check if there is an ensemble, case not, create ensembles
+            ensemble_list = await db.select("ensemble")
+            if (len(ensemble_list) == 0):
+                print("Creating ensemble table")
+                region_list = brazilian_regions.keys()
+                for region in region_list:
+                    await db.create(
+                        "ensemble",
+                        {
+                            "name": region
+                        }
+                    )
+            # Check if there is simulation for each ensemble, case not, create these simulations and relate them to an ensemble
+            ensemble_record_list = await db.select("ensemble")
+            for ensemble_record in ensemble_record_list:
+                ensemble_simulation_list = await db.query("SELECT * FROM simulation WHERE ensemble = %s" % ensemble_record['id'])
+                if (len(ensemble_simulation_list[0]['result']) == 0):
+                    print("Creating simulations for ensemble", ensemble_record['name'])
+                    for simulation in brazilian_regions[ensemble_record['name']]:
+                        await db.create(
+                            "simulation",
+                            {
+                                "name": simulation,
+                                "ensemble": ensemble_record['id']
+                            }
+                        )
+            print(await db.select("simulation"))
+            
+        #except Surreal.
+
 
 def loadBRStatesTaxRevenues():
-    brazilian_regions = {'Norte': ['AC', 'AP', 'AM', 'PA', 'RO', 'RR', 'TO'], 'Nordeste': ['AL', 'BA', 'CE', 'MA', 'PB', 'PE', 'PI', 'RN', 'SE'], 'Centro-Oeste':
-                         ['DF', 'GO', 'MS', 'MT'], 'Sudeste': ['ES', 'MG', 'RJ', 'SP'], 'Sul': ['PR', 'RS', 'SC']}
     # inverse mapping
     state_region = {}
     for k,v in brazilian_regions.items():
@@ -25,12 +69,14 @@ def loadBRStatesTaxRevenues():
     df['Regiao'] = df['UF'].apply(lambda x: state_region[x][0])
     grouped = df.groupby(['Regiao', 'Ano', 'UF'], as_index=False).sum()
     print(grouped)
-    #grouped = grouped.drop(columns=['Mes'])
+    grouped = grouped.drop(columns=['Mes'])
     grouped = grouped[grouped['Ano'] != 2024]
     grouped = grouped.rename(columns={'Regiao': 'ensemble', 'Ano': 'time', 'UF': 'name'})
     return grouped
 
+asyncio.run(connect_db())
 ensembleDataFrame = loadBRStatesTaxRevenues()
+
 
 @app.route('/')
 def hello():

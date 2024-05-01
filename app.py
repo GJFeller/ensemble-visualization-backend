@@ -51,8 +51,34 @@ async def connect_db():
                                 "ensemble": ensemble_record['id']
                             }
                         )
-            print(await db.select("simulation"))
-            
+            print(await db.query(
+                """
+                SELECT name
+                FROM simulation
+                WHERE ensemble IN (
+                  SELECT VALUE id
+                  FROM ensemble
+                  WHERE name="Sul"
+                );
+                """
+            ))
+            ensemble_data = loadBRStatesTaxRevenues()
+            # Organizando, por enquanto, a questão de variáveis e tempo em duas tabelas: variables,
+            # que contém a descrição de variáveis, e cell, com o valor das variáveis em um instante de tempo
+            # (Depois será considerada a questão espacial, mas não para esse dataset usado de teste)
+            variable_name_list = ensemble_data.columns.drop(['ensemble', 'time', 'name'])
+            for variable_name in variable_name_list:
+                # Check if the variable is added in the database, case not, add it
+                db_variable = await db.query("SELECT * FROM variable WHERE name = \"%s\"" % variable_name)
+                if (len(db_variable[0]['result']) == 0):
+                    await db.create(
+                        "variable",
+                        {
+                            "name": variable_name
+                        }
+                    )
+            # TODO: Fazer a tabela dos dados com os seguintes atributos: simulation_id, variable_id, timestep e value.
+            # Depois testar as consultas para verificar o quão fácil e custoso é fazer uma consulta.
         #except Surreal.
 
 
@@ -65,7 +91,7 @@ def loadBRStatesTaxRevenues():
     df = pd.read_csv('arrecadacao-por-estado.csv', sep=';').fillna(0.0)
     columns = df.columns.drop(['Ano', 'Mes', 'UF'])
     df[columns] = df[columns].apply(pd.to_numeric, errors='coerce')
-    df['Total-Arrecadacao'] = df[columns].sum(axis=1)
+    df['TOTAL ARRECADACAO'] = df[columns].sum(axis=1)
     df['Regiao'] = df['UF'].apply(lambda x: state_region[x][0])
     grouped = df.groupby(['Regiao', 'Ano', 'UF'], as_index=False).sum()
     print(grouped)

@@ -67,18 +67,51 @@ async def connect_db():
             # que contém a descrição de variáveis, e cell, com o valor das variáveis em um instante de tempo
             # (Depois será considerada a questão espacial, mas não para esse dataset usado de teste)
             variable_name_list = ensemble_data.columns.drop(['ensemble', 'time', 'name'])
-            for variable_name in variable_name_list:
-                # Check if the variable is added in the database, case not, add it
-                db_variable = await db.query("SELECT * FROM variable WHERE name = \"%s\"" % variable_name)
-                if (len(db_variable[0]['result']) == 0):
-                    await db.create(
-                        "variable",
-                        {
-                            "name": variable_name
-                        }
+            for index, row in ensemble_data.iterrows():
+                for variable_name in variable_name_list:
+                    # Check if the variable is added in the database, case not, add it
+                    db_variable = await db.query("SELECT * FROM variable WHERE name = \"%s\"" % variable_name)
+                    if (len(db_variable[0]['result']) == 0):
+                        await db.create(
+                            "variable",
+                            {
+                                "name": variable_name
+                            }
+                        )
+                    db_cell = await db.query(
+                        """
+                        SELECT *
+                        FROM cell
+                        WHERE simulation_id IN (
+                          SELECT VALUE id
+                          FROM simulation
+                          WHERE name=\"%s\"
+                        )
+                        AND variable_id IN (
+                          SELECT VALUE id
+                          FROM variable
+                          WHERE name=\"%s\"
+                        )
+                        AND timestep=%s;
+                        """
+                        % (row['name'], variable_name, row['time'])
                     )
-            # TODO: Fazer a tabela dos dados com os seguintes atributos: simulation_id, variable_id, timestep e value.
-            # Depois testar as consultas para verificar o quão fácil e custoso é fazer uma consulta.
+                    if (len(db_cell[0]['result']) == 0):
+                        simulation_id_query = await db.query("SELECT VALUE id FROM simulation WHERE name=\"%s\"" % row['name'])
+                        variable_id_query = await db.query("SELECT VALUE id FROM variable WHERE name=\"%s\"" % variable_name)
+                        simulation_id = simulation_id_query[0]['result'][0]
+                        variable_id = variable_id_query[0]['result'][0]
+                        print("Adding cell with simulation_id %s, variable_id %s and timestep %s" % (row['name'], variable_name, row['time']))
+                        await db.create(
+                            "cell",
+                            {
+                                "simulation_id": simulation_id,
+                                "variable_id": variable_id,
+                                "timestep": row['time'],
+                                "value": row[variable_name]
+                            }
+                        )
+
         #except Surreal.
 
 

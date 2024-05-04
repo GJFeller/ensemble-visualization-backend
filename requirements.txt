@@ -1,6 +1,9 @@
-Flask==2.2.2
-numpy==1.24.3
-pandas==2.0.3
-scikit_learn==1.3.0
-umap_learn==0.5.3
-surrealdb==0.3.2
+Flask
+Werkzeug==2.2.2
+numpy
+pandas
+scikit_learn
+umap_learn
+surrealdb
+daal4py
+ruamel-yaml

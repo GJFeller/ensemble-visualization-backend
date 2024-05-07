@@ -7,3 +7,4 @@ umap_learn
 surrealdb
 daal4py
 ruamel-yaml
+pymonetdb

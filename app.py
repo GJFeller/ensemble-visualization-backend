@@ -1,5 +1,6 @@
 from flask import Flask, Response, request
 from surrealdb import Surreal
+import pymonetdb
 import asyncio
 import json
 from sklearn import datasets
@@ -19,65 +20,174 @@ brazilian_regions = {
     'Sul': ['PR', 'RS', 'SC']
     }
 
-async def connect_db():
+def connect_monet_db():
+    try:
+        with pymonetdb.connect(username="monetdb", password="monetdb", hostname="localhost", database="ensemble") as db:
+            cursor = db.cursor()
+            ensemble_data = loadBRStatesTaxRevenues()
+            ensemble_list = ensemble_data['ensemble'].unique()
+            ensemble_id_map = {}
+            simulation_list = ensemble_data['name'].unique()
+            simulation_id_map = {}
+            variable_list = ensemble_data.columns.drop(['ensemble', 'time', 'name'])
+            variable_id_map = {}
+            cursor.execute("CREATE TABLE IF NOT EXISTS ensemble (id UUID NOT NULL PRIMARY KEY, name VARCHAR(200) NOT NULL)")
+            cursor.execute("CREATE TABLE IF NOT EXISTS simulation (id UUID NOT NULL PRIMARY KEY, name VARCHAR(200) NOT NULL, ensemble_id UUID NOT NULL, FOREIGN KEY(ensemble_id) REFERENCES ensemble(id))")
+            cursor.execute("CREATE TABLE IF NOT EXISTS variable (id UUID NOT NULL PRIMARY KEY, name VARCHAR(200) NOT NULL)")
+            cursor.execute("""
+                           CREATE TABLE IF NOT EXISTS cell (
+                               id UUID NOT NULL PRIMARY KEY, 
+                               timestep DECIMAL NOT NULL,
+                               simulation_id UUID NOT NULL,
+                               variable_id UUID NOT NULL,
+                               value DECIMAL NOT NULL,
+                               FOREIGN KEY(simulation_id) REFERENCES simulation(id),
+                               FOREIGN KEY(variable_id) REFERENCES variable(id)
+                           )
+                           """)
+            db.commit()
+            for ensemble_name in ensemble_list:
+                query_ensemble = cursor.execute("SELECT * FROM ensemble WHERE name = \'%s\'" % ensemble_name)
+                if (query_ensemble == 0):
+                    cursor.execute("SELECT sys.uuid() AS uuid")
+                    uuid = cursor.fetchone()[0]
+                    new_record_result = cursor.execute("INSERT INTO ensemble (id, name) VALUES (uuid\'%s\', \'%s\')" % (uuid, ensemble_name))
+                    if(new_record_result == 1):
+                        ensemble_id_map[ensemble_name] = uuid
+                else:
+                    ensemble_id = cursor.fetchone()[0]
+                    ensemble_id_map[ensemble_name] = ensemble_id
+            for simulation_name in simulation_list:
+                query_simulation = cursor.execute("SELECT * FROM simulation WHERE name = \'%s\'" % simulation_name)
+                if (query_simulation == 0):
+                    ensemble_from_simulation = ensemble_data.loc[ensemble_data['name'] == simulation_name]['ensemble'].iloc[0]
+                    ensemble_id = ensemble_id_map[ensemble_from_simulation]
+                    cursor.execute("SELECT sys.uuid() AS uuid")
+                    uuid = cursor.fetchone()[0]
+                    new_record_result = cursor.execute("INSERT INTO simulation (id, name, ensemble_id) VALUES (uuid\'%s\', \'%s\', uuid\'%s\')" % (uuid, simulation_name, ensemble_id))
+                    if(new_record_result == 1):
+                        simulation_id_map[simulation_name] = uuid
+                else:
+                    simulation_id = cursor.fetchone()[0]
+                    simulation_id_map[simulation_name] = simulation_id
+            for variable_name in variable_list:
+                query_variable = cursor.execute("SELECT * FROM variable WHERE name = \'%s\'" % variable_name)
+                if (query_variable == 0):
+                    cursor.execute("SELECT sys.uuid() AS uuid")
+                    uuid = cursor.fetchone()[0]
+                    new_record_result = cursor.execute("INSERT INTO variable (id, name) VALUES (uuid\'%s\', \'%s\')" % (uuid, variable_name))
+                    if(new_record_result == 1):
+                        variable_id_map[variable_name] = uuid
+                else:
+                    variable_id = cursor.fetchone()[0]
+                    variable_id_map[variable_name] = variable_id
+            for index, row in ensemble_data.iterrows():
+                for variable_name in variable_list:
+                    simulation_id = simulation_id_map[row['name']]
+                    variable_id = variable_id_map[variable_name]
+                    query_cell = cursor.execute(
+                        """
+                        SELECT *
+                        FROM cell
+                        WHERE simulation_id = uuid\'%s\'
+                        AND variable_id = uuid\'%s\'
+                        AND timestep = %s
+                        """
+                        % (simulation_id, variable_id, row['time'])
+                    )
+                    if (query_cell == 0):
+                        cursor.execute("SELECT sys.uuid() AS uuid")
+                        uuid = cursor.fetchone()[0]
+                        print(uuid)
+                        new_record_result = cursor.execute(
+                            """
+                            INSERT INTO cell (id, simulation_id, variable_id, timestep, value) 
+                            VALUES (uuid\'%s\', uuid\'%s\', uuid\'%s\', %s, %s)
+                            """
+                            % (uuid, simulation_id, variable_id, row['time'], row[variable_name])
+                        )
+            db.commit()
+    except Exception as e:
+        print(e)
+
+async def connect_surreal_db():
     async with Surreal("ws://localhost:8000/rpc") as db:
         #try:
             # Authentication
             await db.signin({"user": "root", "pass": "root"})
             await db.use("ensemble", "ensemble")
-            # Check if there is an ensemble, case not, create ensembles
-            ensemble_list = await db.select("ensemble")
-            if (len(ensemble_list) == 0):
-                print("Creating ensemble table")
-                region_list = brazilian_regions.keys()
-                for region in region_list:
-                    await db.create(
+            ensemble_data = loadBRStatesTaxRevenues()
+            ensemble_list = ensemble_data['ensemble'].unique()
+            ensemble_id_map = {}
+            simulation_list = ensemble_data['name'].unique()
+            simulation_id_map = {}
+            variable_list = ensemble_data.columns.drop(['ensemble', 'time', 'name'])
+            variable_id_map = {}
+            # Defining tables
+            for ensemble_name in ensemble_list:
+                db_ensemble = await db.query("SELECT VALUE id FROM ensemble WHERE name = \"%s\"" % ensemble_name)
+                if (len(db_ensemble[0]['result']) == 0):
+                    created_ensemble_record = await db.create(
                         "ensemble",
                         {
-                            "name": region
+                            "name": ensemble_name
                         }
                     )
-            # Check if there is simulation for each ensemble, case not, create these simulations and relate them to an ensemble
-            ensemble_record_list = await db.select("ensemble")
-            for ensemble_record in ensemble_record_list:
-                ensemble_simulation_list = await db.query("SELECT * FROM simulation WHERE ensemble = %s" % ensemble_record['id'])
-                if (len(ensemble_simulation_list[0]['result']) == 0):
-                    print("Creating simulations for ensemble", ensemble_record['name'])
-                    for simulation in brazilian_regions[ensemble_record['name']]:
-                        await db.create(
-                            "simulation",
-                            {
-                                "name": simulation,
-                                "ensemble": ensemble_record['id']
-                            }
-                        )
-            print(await db.query(
+                    print(created_ensemble_record)
+                    ensemble_id_map[ensemble_name] = created_ensemble_record[0]['id']
+                else:
+                    ensemble_id = db_ensemble[0]['result'][0]
+                    ensemble_id_map[ensemble_name] = ensemble_id
+            for simulation_name in simulation_list:
+                db_simulation = await db.query("SELECT VALUE id FROM simulation WHERE name = \"%s\"" % simulation_name)
+                if (len(db_simulation[0]['result']) == 0):
+                    ensemble_from_simulation = ensemble_data.loc[ensemble_data['name'] == simulation_name]['ensemble'].iloc[0]
+                    ensemble_id = ensemble_id_map[ensemble_from_simulation]
+                    print(ensemble_id)
+                    created_simulation_record = await db.create(
+                        "simulation",
+                        {
+                            "name": simulation_name,
+                            "ensemble": ensemble_id
+                        }
+                    )
+                    simulation_id_map[simulation_name] = created_simulation_record[0]['id']
+                else:
+                    simulation_id = db_simulation[0]['result'][0]
+                    simulation_id_map[simulation_name] = simulation_id
+            for variable_name in variable_list:
+                db_variable = await db.query("SELECT VALUE id FROM variable WHERE name = \"%s\"" % variable_name)
+                if (len(db_variable[0]['result']) == 0):
+                    created_variable_record = await db.create(
+                        "variable",
+                        {
+                            "name": variable_name,
+                        }
+                    )
+                    variable_id_map[variable_name] = created_variable_record[0]['id']
+                else:
+                    variable_id = db_variable[0]['result'][0]
+                    variable_id_map[variable_name] = variable_id
+            await db.query(
                 """
-                SELECT name
-                FROM simulation
-                WHERE ensemble IN (
-                  SELECT VALUE id
-                  FROM ensemble
-                  WHERE name="Sul"
-                );
-                """
-            ))
-            ensemble_data = loadBRStatesTaxRevenues()
+                DEFINE TABLE IF NOT EXISTS ensemble;
+                DEFINE TABLE IF NOT EXISTS simulation;
+                DEFINE TABLE IF NOT EXISTS variable;
+                DEFINE TABLE IF NOT EXISTS cell;
+                DEFINE FIELD name ON TABLE ensemble TYPE string;
+                DEFINE FIELD name ON TABLE simulation TYPE string;
+                DEFINE FIELD ensemble_id ON TABLE simulation TYPE record<ensemble>;
+                DEFINE FIELD name ON TABLE variable TYPE string;
+                DEFINE FIELD simulation_id ON TABLE cell TYPE record<simulation>;
+                DEFINE FIELD variable_id ON TABLE cell TYPE record<variable>;
+                DEFINE FIELD timestep ON TABLE cell TYPE decimal;
+                DEFINE FIELD value ON TABLE cell TYPE decimal;
+                """)
             # Organizando, por enquanto, a questão de variáveis e tempo em duas tabelas: variables,
             # que contém a descrição de variáveis, e cell, com o valor das variáveis em um instante de tempo
             # (Depois será considerada a questão espacial, mas não para esse dataset usado de teste)
-            variable_name_list = ensemble_data.columns.drop(['ensemble', 'time', 'name'])
             for index, row in ensemble_data.iterrows():
-                for variable_name in variable_name_list:
-                    # Check if the variable is added in the database, case not, add it
-                    db_variable = await db.query("SELECT * FROM variable WHERE name = \"%s\"" % variable_name)
-                    if (len(db_variable[0]['result']) == 0):
-                        await db.create(
-                            "variable",
-                            {
-                                "name": variable_name
-                            }
-                        )
+                for variable_name in variable_list:
                     db_cell = await db.query(
                         """
                         SELECT *
@@ -97,10 +207,8 @@ async def connect_db():
                         % (row['name'], variable_name, row['time'])
                     )
                     if (len(db_cell[0]['result']) == 0):
-                        simulation_id_query = await db.query("SELECT VALUE id FROM simulation WHERE name=\"%s\"" % row['name'])
-                        variable_id_query = await db.query("SELECT VALUE id FROM variable WHERE name=\"%s\"" % variable_name)
-                        simulation_id = simulation_id_query[0]['result'][0]
-                        variable_id = variable_id_query[0]['result'][0]
+                        simulation_id = simulation_id_map[simulation_name]
+                        variable_id = variable_id_map[variable_name]
                         print("Adding cell with simulation_id %s, variable_id %s and timestep %s" % (row['name'], variable_name, row['time']))
                         await db.create(
                             "cell",
@@ -111,6 +219,53 @@ async def connect_db():
                                 "value": row[variable_name]
                             }
                         )
+
+
+            #variable_name_list = ensemble_data.columns.drop(['ensemble', 'time', 'name'])
+            #for index, row in ensemble_data.iterrows():
+            #    for variable_name in variable_name_list:
+            #        # Check if the variable is added in the database, case not, add it
+            #        db_variable = await db.query("SELECT * FROM variable WHERE name = \"%s\"" % variable_name)
+            #        if (len(db_variable[0]['result']) == 0):
+            #            await db.create(
+            #                "variable",
+            #                {
+            #                    "name": variable_name
+            #                }
+            #            )
+            #        db_cell = await db.query(
+            #            """
+            #            SELECT *
+            #            FROM cell
+            #            WHERE simulation_id IN (
+            #              SELECT VALUE id
+            #              FROM simulation
+            #              WHERE name=\"%s\"
+            #            )
+            #            AND variable_id IN (
+            #              SELECT VALUE id
+            #              FROM variable
+            #              WHERE name=\"%s\"
+            #            )
+            #            AND timestep=%s;
+            #            """
+            #            % (row['name'], variable_name, row['time'])
+            #        )
+            #        if (len(db_cell[0]['result']) == 0):
+            #            simulation_id_query = await db.query("SELECT VALUE id FROM simulation WHERE name=\"%s\"" % row['name'])
+            #            variable_id_query = await db.query("SELECT VALUE id FROM variable WHERE name=\"%s\"" % variable_name)
+            #            simulation_id = simulation_id_query[0]['result'][0]
+            #            variable_id = variable_id_query[0]['result'][0]
+            #            print("Adding cell with simulation_id %s, variable_id %s and timestep %s" % (row['name'], variable_name, row['time']))
+            #            await db.create(
+            #                "cell",
+            #                {
+            #                    "simulation_id": simulation_id,
+            #                    "variable_id": variable_id,
+            #                    "timestep": row['time'],
+            #                    "value": row[variable_name]
+            #                }
+            #            )
 
         #except Surreal.
 
@@ -133,8 +288,9 @@ def loadBRStatesTaxRevenues():
     grouped = grouped.rename(columns={'Regiao': 'ensemble', 'Ano': 'time', 'UF': 'name'})
     return grouped
 
-asyncio.run(connect_db())
-ensembleDataFrame = loadBRStatesTaxRevenues()
+connect_monet_db()
+#asyncio.run(connect_monet_db())
+#ensembleDataFrame = loadBRStatesTaxRevenues()
 
 
 @app.route('/')

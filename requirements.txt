@@ -8,3 +8,5 @@ surrealdb
 daal4py
 ruamel-yaml
 pymonetdb
+python-dotenv
+python-abc

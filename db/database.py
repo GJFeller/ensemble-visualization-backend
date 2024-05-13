@@ -40,7 +40,7 @@ class Database(ABC):
         pass
 
     @abstractmethod
-    def insert_one(self, item):
+    def insert_one(self, record):
         pass
     
     @abstractmethod

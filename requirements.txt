@@ -10,3 +10,4 @@ ruamel-yaml
 pymonetdb
 python-dotenv
 python-abc
+schema

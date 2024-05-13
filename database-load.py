@@ -1,5 +1,5 @@
 from dotenv import dotenv_values
-from model.Ensemble import Ensemble
+from model import Ensemble, Simulation, Variable, CellData
 from surrealdb import Surreal
 import pymonetdb
 import asyncio
@@ -44,15 +44,43 @@ def loadDataIntoDatabase(ensemble_data):
     simulation_id_map = {}
     variable_list = ensemble_data.columns.drop(['ensemble', 'time', 'name'])
     variable_id_map = {}
-    ensemble_model = Ensemble()
+    ensemble_model = Ensemble.Ensemble()
+    simulation_model = Simulation.Simulation()
+    variable_model = Variable.Variable()
+    cell_data_model = CellData.CellData()
     # TODO: Create one model for each table, after remove these drops
     #ensemble_model.get_cursor().execute("DROP TABLE IF EXISTS cell")
     #ensemble_model.get_cursor().execute("DROP TABLE IF EXISTS variable")
     #ensemble_model.get_cursor().execute("DROP TABLE IF EXISTS simulation")
     ensemble_model.create_table()
+    simulation_model.create_table()
+    variable_model.create_table()
+    cell_data_model.create_table()
     for ensemble_name in ensemble_list:
-        uuid = ensemble_model.insert_one(ensemble_name)
+        record = {"name": ensemble_name}
+        uuid = ensemble_model.insert_one(record)
         ensemble_id_map[ensemble_name] = uuid
+    for simulation_name in simulation_list:
+        ensemble_from_simulation = ensemble_data.loc[ensemble_data['name'] == simulation_name]['ensemble'].iloc[0]
+        record = {"name": simulation_name, "ensemble_id": ensemble_id_map[ensemble_from_simulation]}
+        uuid = simulation_model.insert_one(record)
+        simulation_id_map[simulation_name] = uuid
+    for variable_name in variable_list:
+        record = {"name": variable_name}
+        uuid = variable_model.insert_one(record)
+        variable_id_map[variable_name] = uuid
+    for index, row in ensemble_data.iterrows():
+        for variable_name in variable_list:
+            simulation_id = simulation_id_map[row['name']]
+            variable_id = variable_id_map[variable_name]
+            record = {
+                "value": float(row[variable_name]),
+                "simulation_id": simulation_id, 
+                "variable_id": variable_id, 
+                "timestep": float(row['time']), 
+            }
+            cell_data_model.insert_one(record)
+
 
 
 data = loadBRStatesTaxRevenues()

@@ -6,27 +6,51 @@ from abc import ABC, abstractmethod
 
 config = dotenv_values(".env")
 
-class Database(ABC):
+class Model(ABC):
+    """An abstract class with some basic implementation to be a base for data models
+
+    It implements the connection creation, returns the cursor from the database and commits the executed queries.
+    Other methods are abstract methods.
+
+    For now, it only supports pymonetdb as the database driver. In the future it may support more drivers, but it
+    needs to be more general to support more different DBMS.
+    """
+
     def __init__(self):
+        """Sets the database driver according to what is in the variable DB_DRIVER in .env file and
+        creates the connection to the database.
+        """
+
         self.__driver = config["DB_DRIVER"]
         self.__con = self.__create_connection()
         self.__cur = self.__con.cursor()
     
     def __create_connection(self):
+        """Creates the database connection according to the driver set
+        """
+
         if self.__driver == "monetdb":
             return pymonetdb.connect(username=config["DB_USERNAME"], password=config["DB_PASSWORD"], hostname=config["DB_HOSTNAME"], database=config["DB_DATABASE"])
         else:
             raise Exception("Database driver %s not yet implemented" % self.__driver)
     
     def get_cursor(self):
+        """Returns the database cursor to execute queries
+        """
+
         if self.__driver == "monetdb":
             return self.__cur
         else:
             raise Exception("Database driver %s not yet implemented" % self.__driver)
         
     def commit(self):
+        """Commits all executes queries to the database
+        """
+
         if self.__driver == "monetdb":
             self.__con.commit()
+        else:
+            raise Exception("Database driver %s not yet implemented" % self.__driver)
 
     # NOTE: Maybe, in the future, we are going to make a more generic implementation of a query    
     #def execute_query(self, query):
@@ -37,18 +61,45 @@ class Database(ABC):
     
     @abstractmethod
     def create_table(self):
+        """Abstract method for the model to create table in the database
+        """
+        
         pass
 
     @abstractmethod
     def insert_one(self, record):
+        """Abstract method for the model to insert one record in the database
+
+        :param record: A record which schema needs to be defined by the model
+        :type record: object
+
+        :returns: uuid from added record in the database
+        :rtype: UUID 
+        """
+
         pass
     
     @abstractmethod
     def read_all(self):
+        """Abstract method for the model to return all records from a certain model
+
+        :returns: list of all data from the model
+        :rtype: list
+        """
+
         pass
 
     @abstractmethod
     def read_one(self, uuid):
+        """Abstract method for the model to return a specific record
+
+        :param uuid: uuid of a record
+        :type uuid: UUID
+
+        :returns: a record from the database
+        :rtype: object
+        """
+
         pass
 
 ## Adding SurrealDB code here just if I am going to use it in future

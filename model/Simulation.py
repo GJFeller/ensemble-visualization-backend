@@ -1,4 +1,4 @@
-from db.database import Database
+from db.Model import Model
 from schema import Schema, And, Use, Optional, SchemaError
 from uuid import UUID
 
@@ -9,7 +9,7 @@ schema_record = Schema(
     }
 )
 
-class Simulation(Database):
+class Simulation(Model):
     def __init__(self) -> None:
         super().__init__()
 

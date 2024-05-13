@@ -20,6 +20,15 @@ brazilian_regions = {
     }
 
 def loadBRStatesTaxRevenues():
+    """Parses csv from brazilian tax revenue
+    
+    File data needs to come from: https://dados.gov.br/dados/conjuntos-dados/resultado-da-arrecadacao
+    and it has to be defined in .env file as the variable DATA_FILENAME.
+
+    :returns: a pandas dataframe with all data from csv
+    :rtype: pandas.DataFrame
+    """
+
     # inverse mapping
     state_region = {}
     for k,v in brazilian_regions.items():
@@ -38,6 +47,17 @@ def loadBRStatesTaxRevenues():
     return grouped
 
 def loadDataIntoDatabase(ensemble_data):
+    """Receives a pandas DataFrame formated and insert the data in the database
+
+    The pandas DataFrame needs to have the following columns to be the indexes: 
+    (i) ensemble, (ii) name and (iii) time.
+    Variables are going to be other columns and the values of these variables
+    need to be numeric values.
+
+    :param ensemble_data: A pandas DataFrame with each row a value from a simulation in a certain cell
+    :type ensemble_data: pandas.DataFrame
+    """
+
     ensemble_list = ensemble_data['ensemble'].unique()
     ensemble_id_map = {}
     simulation_list = ensemble_data['name'].unique()
@@ -80,8 +100,6 @@ def loadDataIntoDatabase(ensemble_data):
                 "timestep": float(row['time']), 
             }
             cell_data_model.insert_one(record)
-
-
 
 data = loadBRStatesTaxRevenues()
 

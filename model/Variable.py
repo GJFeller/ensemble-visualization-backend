@@ -1,4 +1,4 @@
-from db.database import Database
+from db.Model import Model
 from schema import Schema, And, Use, Optional, SchemaError
 
 schema_record = Schema(
@@ -7,7 +7,7 @@ schema_record = Schema(
     }
 )
 
-class Variable(Database):
+class Variable(Model):
     def __init__(self) -> None:
         super().__init__()
 

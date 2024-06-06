@@ -30,7 +30,7 @@ class Model(ABC):
         """
 
         if self.__driver == "monetdb":
-            return pymonetdb.connect(username=config["DB_USERNAME"], password=config["DB_PASSWORD"], hostname=config["DB_HOSTNAME"], database=config["DB_DATABASE"])
+            return pymonetdb.connect(username=config["DB_USERNAME"], password=config["DB_PASSWORD"], hostname=config["DB_HOSTNAME"], port=config["DB_PORT"], database=config["DB_DATABASE"])
         else:
             raise Exception("Database driver %s not yet implemented" % self.__driver)
     

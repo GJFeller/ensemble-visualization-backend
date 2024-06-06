@@ -10,6 +10,7 @@ from sklearn.preprocessing import StandardScaler
 import umap
 import pandas as pd
 import numpy as np
+from model import Ensemble, Simulation, Variable, CellData
 
 app = Flask(__name__)
 dr_methods = ['PCA', 'UMAP']
@@ -21,10 +22,18 @@ brazilian_regions = {
     'Sul': ['PR', 'RS', 'SC']
     }
 
+def create_dataframe_all_ensembles():
+    columns =['ensemble', 'name', 'time']
+    variableModel = Variable.Variable()
+    allVariableRecords = variableModel.read_all()
+    print(allVariableRecords)
 
 
 
-connect_monet_db()
+
+
+ensembleDataFrame = create_dataframe_all_ensembles()
+#connect_monet_db()
 #asyncio.run(connect_monet_db())
 #ensembleDataFrame = loadBRStatesTaxRevenues()
 

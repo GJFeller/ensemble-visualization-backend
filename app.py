@@ -23,10 +23,30 @@ brazilian_regions = {
     }
 
 def create_dataframe_all_ensembles():
-    columns =['ensemble', 'name', 'time']
+    dfColumns =['ensemble', 'name', 'time']
+    ensembleModel = Ensemble.Ensemble()
+    simulationModel = Simulation.Simulation()
     variableModel = Variable.Variable()
+    cellDataModel = CellData.CellData()
     allVariableRecords = variableModel.read_all()
-    print(allVariableRecords)
+    variableRecordsDict = dict((x, y) for x, y in allVariableRecords)
+    #print(variableRecordsDict)
+    dfColumns = dfColumns + list(variableRecordsDict.values())
+    allEnsembleRecords = ensembleModel.read_all()
+    ensembleRecordsDict = dict((x, y) for x, y in allEnsembleRecords)
+    allSimulationRecords = simulationModel.read_all()
+    allSimulationList = []
+    for item in allSimulationRecords:
+        allSimulationList.append((item[0], item[1], ensembleRecordsDict[item[2]]))
+    #print(allSimulationList)
+    simulationRecordsDict = dict((x, [y, z]) for x, y, z in allSimulationList)
+    #print(simulationRecordsDict)
+    allCellDataRecords = cellDataModel.read_all()
+    allCellDataList = []
+    for item in allCellDataRecords:
+        allCellDataList.append((simulationRecordsDict[item[2]][1], simulationRecordsDict[item[2]][0], float(item[1]), variableRecordsDict[item[3]], float(item[4])))
+    print(allCellDataList)
+
 
 
 

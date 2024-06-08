@@ -7,7 +7,19 @@ import model
 import pandas as pd
 import numpy as np
 
-config = dotenv_values(".env")
+default_envs = {
+    "DB_DRIVER": "monetdb",
+    "DB_HOSTNAME": "localhost",
+    "DB_PORT": 50000,
+    "DB_DATABASE": "ensemble",
+    "DB_USERNAME": "ensemble",
+    "DB_PASSWORD": "ensemble",
+    "DATA_FILENAME": "data.csv"
+    }
+config = {
+    **default_envs,
+    **dotenv_values(".env")
+}
 print(config)
 print(config["DB_DRIVER"])
 

@@ -45,18 +45,24 @@ def create_dataframe_all_ensembles():
     allCellDataList = []
     for item in allCellDataRecords:
         allCellDataList.append((simulationRecordsDict[item[2]][1], simulationRecordsDict[item[2]][0], float(item[1]), variableRecordsDict[item[3]], float(item[4])))
-    print(allCellDataList)
+    #print(allCellDataList)
     timestepList = list(map(lambda x: float(x[0]), cellDataModel.get_timesteps()))
     columnSize = len(dfColumns)
     rowSize = len(allSimulationList) * len(timestepList)
     data = np.zeros((rowSize, columnSize), dtype=object)
+    rowIdx = 0
     for simItem in list(simulationRecordsDict.values()):
         for timestep in timestepList:
             # TODO: Preencher inicialmente o data com os timesteps, estados e regioes, depois fazer um array preenchendo as variáveis
             result = cellDataModel.get_celldata_all_variables(simItem[0], timestep)
-            print(result)
+            data[rowIdx, 0] = simItem[1]
+            data[rowIdx, 1] = simItem[0]
+            data[rowIdx, 2] = timestep
+            for cellData in result:
+                data[rowIdx, dfColumns.index(cellData[2])] = float(cellData[4])
+            rowIdx = rowIdx + 1
+    return pd.DataFrame(data=data, columns=dfColumns)
     
-
 
 
 

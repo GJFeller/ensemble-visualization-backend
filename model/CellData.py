@@ -56,3 +56,12 @@ class CellData(Model):
     def read_one(self, uuid):
         self.get_cursor().execute("SELECT * FROM cell_data WHERE id = uuid\'%s\'" % uuid)
         return self.get_cursor().fetchone()
+    
+    def get_celldata_all_variables(self, simulation, timestep):
+        self.get_cursor().execute("SELECT cd.id, s.name, v.name, cd.timestep, cd.value FROM cell_data AS cd, simulation AS s, variable AS v WHERE s.id = cd.simulation_id AND v.id = cd.variable_id AND s.name = \'%s\' AND cd.timestep = %s"
+                                  % (simulation, timestep))
+        return self.get_cursor().fetchall()
+    
+    def get_timesteps(self):
+        self.get_cursor().execute("SELECT DISTINCT timestep FROM cell_data")
+        return self.get_cursor().fetchall()

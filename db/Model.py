@@ -1,6 +1,7 @@
 from dotenv import dotenv_values
 #from surrealdb import Surreal
 import pymonetdb
+import sqlite3
 #import asyncio
 from abc import ABC, abstractmethod
 
@@ -45,14 +46,21 @@ class Model(ABC):
 
         if self.__driver == "monetdb":
             return pymonetdb.connect(username=config["DB_USERNAME"], password=config["DB_PASSWORD"], hostname=config["DB_HOSTNAME"], port=config["DB_PORT"], database=config["DB_DATABASE"])
+        elif self.__driver == "sqlite":
+            return sqlite3.connect("ensemble.db")
         else:
             raise Exception("Database driver %s not yet implemented" % self.__driver)
-    
+
+    def get_driver(self):
+        """Returns the driver used by the model
+        """
+        return self.__driver
+
     def get_cursor(self):
         """Returns the database cursor to execute queries
         """
 
-        if self.__driver == "monetdb":
+        if self.__driver == "monetdb" or self.__driver == "sqlite":
             return self.__cur
         else:
             raise Exception("Database driver %s not yet implemented" % self.__driver)
@@ -61,7 +69,7 @@ class Model(ABC):
         """Commits all executes queries to the database
         """
 
-        if self.__driver == "monetdb":
+        if self.__driver == "monetdb" or self.__driver == "sqlite":
             self.__con.commit()
         else:
             raise Exception("Database driver %s not yet implemented" % self.__driver)

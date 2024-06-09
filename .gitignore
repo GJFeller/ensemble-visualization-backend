@@ -161,3 +161,6 @@ cython_debug/
 
 # SurrealDB directory with data
 mydatabase.db/
+
+# All .db files
+*.db

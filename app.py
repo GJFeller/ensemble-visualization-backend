@@ -108,8 +108,16 @@ def list_variables():
 @app.route('/dimensional-reduction', methods=['GET'])
 def getEnsembleDR():
     method = request.args.get('method', default="PCA", type = str)
+    ensemble_list = request.args.getlist('ensemble')
+    simulation_list = request.args.getlist('simulation')
+    print(ensemble_list)
+    print(simulation_list)
     indexes = ['ensemble', 'time', 'name']
     filtered_df = ensembleDataFrame[ensembleDataFrame['time'] == 2023]
+    if(len(ensemble_list) != 0):
+        filtered_df = filtered_df[filtered_df['ensemble'].isin(ensemble_list)]
+    if(len(simulation_list) != 0):
+        filtered_df = filtered_df[filtered_df['name'].isin(simulation_list)]
     data = filtered_df.drop(columns=indexes)
     identifiers = filtered_df[indexes]
 
@@ -143,9 +151,16 @@ def getEnsembleDR():
 def temporalData():
     aggregate = request.args.get('aggregate', default=False, type = bool)
     variable = request.args.get('variable', default='', type = str)
+    ensemble_list = request.args.getlist('ensemble')
+    simulation_list = request.args.getlist('simulation')
+    filtered_df = ensembleDataFrame
     if variable == '':
         variable = ensembleDataFrame.columns.values.tolist()[-1]
-    groupedStates = ensembleDataFrame.groupby(['ensemble', 'name'])[['time', variable]].apply(lambda x: x.values.tolist()).to_frame()
+    if(len(ensemble_list) != 0):
+        filtered_df = filtered_df[filtered_df['ensemble'].isin(ensemble_list)]
+    if(len(simulation_list) != 0):
+        filtered_df = filtered_df[filtered_df['name'].isin(simulation_list)]
+    groupedStates = filtered_df.groupby(['ensemble', 'name'])[['time', variable]].apply(lambda x: x.values.tolist()).to_frame()
     groupedStates.rename(columns={0: 'points'}, inplace=True)
 
     # Funcao para transformar o dataframe em um dict hierarquico do formato ensemble -> nome -> lista de pontos

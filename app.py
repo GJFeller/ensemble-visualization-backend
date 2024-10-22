@@ -76,7 +76,7 @@ ensembleDataFrame = create_dataframe_all_ensembles()
 
 @app.route('/')
 def hello():
-    resp = Response(response=ensembleDataFrame.to_json(orient='index'), status=200, mimetype="text/plain")
+    resp = Response(response=ensembleDataFrame.to_json(orient='index'), status=200, mimetype="application/json")
     resp.headers['Access-Control-Allow-Origin'] = '*'
     return resp
 
@@ -87,13 +87,13 @@ def list_ensembles():
     df = df[indexes]
     #df['record_object'] = df['name'].apply(lambda row: json.dumps(row.to_dict()))
     grouped = df.groupby('ensemble')['name'].apply(lambda x: x.values.tolist())
-    resp = Response(response=grouped.to_json(orient='index'), status=200, mimetype="text/plain")
+    resp = Response(response=grouped.to_json(orient='index'), status=200, mimetype="application/json")
     resp.headers['Access-Control-Allow-Origin'] = '*'
     return resp
 
 @app.route('/dr-methods', methods=['GET'])
 def list_dr_methods():
-    resp = Response(response=json.dumps(dr_methods), status=200, mimetype="text/plain")
+    resp = Response(response=json.dumps(dr_methods), status=200, mimetype="application/json")
     resp.headers['Access-Control-Allow-Origin'] = '*'
     return resp
 
@@ -101,7 +101,7 @@ def list_dr_methods():
 def list_variables():
     column_names = ensembleDataFrame.columns.values.tolist()
     column_names = [e for e in column_names if e not in ('ensemble', 'time', 'name')]
-    resp = Response(response=json.dumps(column_names), status=200, mimetype="text/plain")
+    resp = Response(response=json.dumps(column_names), status=200, mimetype="application/json")
     resp.headers['Access-Control-Allow-Origin'] = '*'
     return resp
 
@@ -128,7 +128,7 @@ def getEnsembleDR():
         keep_columns = ['name', 'x', 'y']
         df['record_object'] = df[keep_columns].apply(lambda row: json.dumps(row.to_dict()), axis=1)
         grouped = df.groupby('ensemble')['record_object'].apply(list)
-        resp = Response(response=grouped.to_json(orient='index'), status=200, mimetype="text/plain")
+        resp = Response(response=grouped.to_json(orient='index'), status=200, mimetype="application/json")
         resp.headers['Access-Control-Allow-Origin'] = '*'
         return resp
     elif method == "UMAP":
@@ -138,12 +138,12 @@ def getEnsembleDR():
         keep_columns = ['name', 'x', 'y']
         df['record_object'] = df[keep_columns].apply(lambda row: json.dumps(row.to_dict()), axis=1)
         grouped = df.groupby('ensemble')['record_object'].apply(list)
-        resp = Response(response=grouped.to_json(orient='index'), status=200, mimetype="text/plain")
+        resp = Response(response=grouped.to_json(orient='index'), status=200, mimetype="application/json")
         resp.headers['Access-Control-Allow-Origin'] = '*'
         return resp
     # TODO: implement the same behavior above for UMAP
 
-    resp = Response(response=data.to_json(orient='index'), status=200, mimetype="text/plain")
+    resp = Response(response=data.to_json(orient='index'), status=200, mimetype="application/json")
     resp.headers['Access-Control-Allow-Origin'] = '*'
     return resp
 
@@ -179,10 +179,23 @@ def temporalData():
     if aggregate:
         return "WIP"
     else:
-        resp = Response(response=json.dumps(nested_dict['points']), status=200, mimetype="text/plain")
+        resp = Response(response=json.dumps(nested_dict['points']), status=200, mimetype="application/json")
         resp.headers['Access-Control-Allow-Origin'] = '*'
         return resp
 
 @app.route('/correlation-matrix', methods=['GET'])
 def correlationMatrix():
-    return "WIP"
+    ensemble_list = request.args.getlist('ensemble')
+    simulation_list = request.args.getlist('simulation')
+    indexes = ['ensemble', 'time', 'name']
+    filtered_df = ensembleDataFrame[ensembleDataFrame['time'] == 2023]
+    if(len(ensemble_list) != 0):
+        filtered_df = filtered_df[filtered_df['ensemble'].isin(ensemble_list)]
+    if(len(simulation_list) != 0):
+        filtered_df = filtered_df[filtered_df['name'].isin(simulation_list)]
+    data = filtered_df.drop(columns=indexes)
+    identifiers = filtered_df[indexes]
+    correlation_matrix = data.corr().fillna(0)
+    resp = Response(response=correlation_matrix.to_json(orient='index'), status=200, mimetype="application/json")
+    resp.headers['Access-Control-Allow-Origin'] = '*'
+    return resp

@@ -15,10 +15,10 @@ from model import Ensemble, Simulation, Variable, CellData
 app = Flask(__name__)
 dr_methods = ['PCA', 'UMAP']
 brazilian_regions = {
-    'Norte': ['AC', 'AP', 'AM', 'PA', 'RO', 'RR', 'TO'], 
-    'Nordeste': ['AL', 'BA', 'CE', 'MA', 'PB', 'PE', 'PI', 'RN', 'SE'], 
-    'Centro-Oeste': ['DF', 'GO', 'MS', 'MT'], 
-    'Sudeste': ['ES', 'MG', 'RJ', 'SP'], 
+    'Norte': ['AC', 'AP', 'AM', 'PA', 'RO', 'RR', 'TO'],
+    'Nordeste': ['AL', 'BA', 'CE', 'MA', 'PB', 'PE', 'PI', 'RN', 'SE'],
+    'Centro-Oeste': ['DF', 'GO', 'MS', 'MT'],
+    'Sudeste': ['ES', 'MG', 'RJ', 'SP'],
     'Sul': ['PR', 'RS', 'SC']
     }
 
@@ -62,7 +62,7 @@ def create_dataframe_all_ensembles():
                 data[rowIdx, dfColumns.index(cellData[2])] = float(cellData[4])
             rowIdx = rowIdx + 1
     return pd.DataFrame(data=data, columns=dfColumns)
-    
+
 
 
 
@@ -182,3 +182,7 @@ def temporalData():
         resp = Response(response=json.dumps(nested_dict['points']), status=200, mimetype="text/plain")
         resp.headers['Access-Control-Allow-Origin'] = '*'
         return resp
+
+@app.route('/correlation-matrix', methods=['GET'])
+def correlationMatrix():
+    return "WIP"

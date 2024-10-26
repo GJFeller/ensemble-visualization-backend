@@ -195,7 +195,7 @@ def correlationMatrix():
         filtered_df = filtered_df[filtered_df['name'].isin(simulation_list)]
     data = filtered_df.drop(columns=indexes)
     identifiers = filtered_df[indexes]
-    correlation_matrix = data.corr().fillna(0)
+    correlation_matrix = data.corr().dropna(axis=0, how='all').dropna(axis=1, how='all')
     resp = Response(response=correlation_matrix.to_json(orient='index'), status=200, mimetype="application/json")
     resp.headers['Access-Control-Allow-Origin'] = '*'
     return resp

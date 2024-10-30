@@ -126,9 +126,9 @@ def getEnsembleDR():
         scaled_data = StandardScaler().fit_transform(data)
         df = pd.concat([identifiers, pd.DataFrame(pca.fit_transform(scaled_data), columns=['x', 'y'], index=data.index)], axis=1)
         keep_columns = ['name', 'x', 'y']
-        df['record_object'] = df[keep_columns].apply(lambda row: json.dumps(row.to_dict()), axis=1)
-        grouped = df.groupby('ensemble')['record_object'].apply(list)
-        resp = Response(response=grouped.to_json(orient='index'), status=200, mimetype="application/json")
+        df['record_object'] = df[keep_columns].to_dict('records')
+        grouped = df.groupby('ensemble')['record_object'].apply(list).to_dict()
+        resp = Response(response=json.dumps(grouped), status=200, mimetype="application/json")
         resp.headers['Access-Control-Allow-Origin'] = '*'
         return resp
     elif method == "UMAP":
@@ -136,9 +136,9 @@ def getEnsembleDR():
         scaled_data = StandardScaler().fit_transform(data)
         df = pd.concat([identifiers, pd.DataFrame(reducer.fit_transform(scaled_data), columns=['x', 'y'], index=data.index)], axis=1)
         keep_columns = ['name', 'x', 'y']
-        df['record_object'] = df[keep_columns].apply(lambda row: json.dumps(row.to_dict()), axis=1)
-        grouped = df.groupby('ensemble')['record_object'].apply(list)
-        resp = Response(response=grouped.to_json(orient='index'), status=200, mimetype="application/json")
+        df['record_object'] = df[keep_columns].to_dict('records')
+        grouped = df.groupby('ensemble')['record_object'].apply(list).to_dict()
+        resp = Response(response=json.dumps(grouped), status=200, mimetype="application/json")
         resp.headers['Access-Control-Allow-Origin'] = '*'
         return resp
     # TODO: implement the same behavior above for UMAP

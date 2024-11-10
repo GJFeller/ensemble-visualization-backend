@@ -11,191 +11,195 @@ import umap
 import pandas as pd
 import numpy as np
 from model import Ensemble, Simulation, Variable, CellData
+from typing import Dict, List, Tuple
+from functools import lru_cache
 
 app = Flask(__name__)
-dr_methods = ['PCA', 'UMAP']
-brazilian_regions = {
+
+# Constants
+DR_METHODS = ['PCA', 'UMAP']
+BRAZILIAN_REGIONS = {
     'Norte': ['AC', 'AP', 'AM', 'PA', 'RO', 'RR', 'TO'],
     'Nordeste': ['AL', 'BA', 'CE', 'MA', 'PB', 'PE', 'PI', 'RN', 'SE'],
     'Centro-Oeste': ['DF', 'GO', 'MS', 'MT'],
     'Sudeste': ['ES', 'MG', 'RJ', 'SP'],
     'Sul': ['PR', 'RS', 'SC']
-    }
+}
 
-def create_dataframe_all_ensembles():
-    dfColumns =['ensemble', 'name', 'time']
-    ensembleModel = Ensemble.Ensemble()
-    simulationModel = Simulation.Simulation()
-    variableModel = Variable.Variable()
-    cellDataModel = CellData.CellData()
-    allVariableRecords = variableModel.read_all()
-    variableRecordsDict = dict((x, y) for x, y in allVariableRecords)
-    #print(variableRecordsDict)
-    dfColumns = dfColumns + list(variableRecordsDict.values())
-    allEnsembleRecords = ensembleModel.read_all()
-    ensembleRecordsDict = dict((x, y) for x, y in allEnsembleRecords)
-    allSimulationRecords = simulationModel.read_all()
-    allSimulationList = []
-    for item in allSimulationRecords:
-        allSimulationList.append((item[0], item[1], ensembleRecordsDict[item[2]]))
-    #print(allSimulationList)
-    simulationRecordsDict = dict((x, [y, z]) for x, y, z in allSimulationList)
-    #print(simulationRecordsDict)
-    allCellDataRecords = cellDataModel.read_all()
-    allCellDataList = []
-    for item in allCellDataRecords:
-        allCellDataList.append((simulationRecordsDict[item[2]][1], simulationRecordsDict[item[2]][0], float(item[1]), variableRecordsDict[item[3]], float(item[4])))
-    #print(allCellDataList)
-    timestepList = list(map(lambda x: float(x[0]), cellDataModel.get_timesteps()))
-    columnSize = len(dfColumns)
-    rowSize = len(allSimulationList) * len(timestepList)
-    data = np.zeros((rowSize, columnSize), dtype=object)
-    rowIdx = 0
-    for simItem in list(simulationRecordsDict.values()):
-        for timestep in timestepList:
-            # TODO: Preencher inicialmente o data com os timesteps, estados e regioes, depois fazer um array preenchendo as variáveis
-            result = cellDataModel.get_celldata_all_variables(simItem[0], timestep)
-            data[rowIdx, 0] = simItem[1]
-            data[rowIdx, 1] = simItem[0]
-            data[rowIdx, 2] = timestep
-            for cellData in result:
-                data[rowIdx, dfColumns.index(cellData[2])] = float(cellData[4])
-            rowIdx = rowIdx + 1
-    return pd.DataFrame(data=data, columns=dfColumns)
+class DataFrameManager:
+    def __init__(self):
+        self.ensemble_df = self._create_dataframe_all_ensembles()
+        
+    def _fetch_model_data(self) -> Tuple[Dict, Dict, List]:
+        ensemble_model = Ensemble.Ensemble()
+        simulation_model = Simulation.Simulation()
+        variable_model = Variable.Variable()
+        cell_data_model = CellData.CellData()
+        
+        # Get variables
+        variable_records = dict(variable_model.read_all())
+        
+        # Get ensembles
+        ensemble_records = dict(ensemble_model.read_all())
+        
+        # Get simulations
+        simulation_records = simulation_model.read_all()
+        simulation_list = [
+            (item[0], item[1], ensemble_records[item[2]])
+            for item in simulation_records
+        ]
+        
+        return variable_records, dict((x, [y, z]) for x, y, z in simulation_list), cell_data_model
+    
+    def _create_dataframe_all_ensembles(self) -> pd.DataFrame:
+        variable_records, simulation_records, cell_data_model = self._fetch_model_data()
+        
+        # Create column list
+        df_columns = ['ensemble', 'name', 'time'] + list(variable_records.values())
+        
+        # Get timesteps - Fix for tuple return type
+        timesteps = [float(ts[0]) for ts in cell_data_model.get_timesteps()]
+        
+        # Initialize data array
+        row_size = len(simulation_records) * len(timesteps)
+        data = np.zeros((row_size, len(df_columns)), dtype=object)
+        
+        # Fill data array
+        for row_idx, (sim_name, sim_data) in enumerate(simulation_records.items()):
+            base_idx = row_idx * len(timesteps)
+            for t_idx, timestep in enumerate(timesteps):
+                curr_idx = base_idx + t_idx
+                
+                # Fill basic information
+                data[curr_idx, 0] = sim_data[1]  # ensemble
+                data[curr_idx, 1] = sim_data[0]  # name
+                data[curr_idx, 2] = timestep     # time
+                
+                # Fill variable data
+                result = cell_data_model.get_celldata_all_variables(sim_data[0], timestep)
+                for cell_data in result:
+                    col_idx = df_columns.index(cell_data[2])
+                    data[curr_idx, col_idx] = float(cell_data[4])
+        
+        return pd.DataFrame(data=data, columns=df_columns)
 
+# Initialize DataFrameManager
+df_manager = DataFrameManager()
 
-
-
-
-
-ensembleDataFrame = create_dataframe_all_ensembles()
-#connect_monet_db()
-#asyncio.run(connect_monet_db())
-#ensembleDataFrame = loadBRStatesTaxRevenues()
-
+def create_cors_response(data, status_code=200):
+    """Helper function to create CORS-enabled responses"""
+    resp = Response(
+        response=json.dumps(data) if isinstance(data, (dict, list)) else data,
+        status=status_code,
+        mimetype="application/json"
+    )
+    resp.headers['Access-Control-Allow-Origin'] = '*'
+    return resp
 
 @app.route('/')
 def hello():
-    resp = Response(response=ensembleDataFrame.to_json(orient='index'), status=200, mimetype="application/json")
-    resp.headers['Access-Control-Allow-Origin'] = '*'
-    return resp
+    return create_cors_response(df_manager.ensemble_df.to_json(orient='index'))
 
 @app.route('/list-ensembles')
 def list_ensembles():
-    indexes = ['ensemble', 'name']
-    df = ensembleDataFrame[ensembleDataFrame['time'] == 2023]
-    df = df[indexes]
-    #df['record_object'] = df['name'].apply(lambda row: json.dumps(row.to_dict()))
+    df = df_manager.ensemble_df[df_manager.ensemble_df['time'] == 2023][['ensemble', 'name']]
     grouped = df.groupby('ensemble')['name'].apply(lambda x: x.values.tolist())
-    resp = Response(response=grouped.to_json(orient='index'), status=200, mimetype="application/json")
-    resp.headers['Access-Control-Allow-Origin'] = '*'
-    return resp
+    return create_cors_response(grouped.to_json(orient='index'))
 
-@app.route('/dr-methods', methods=['GET'])
+@app.route('/dr-methods')
 def list_dr_methods():
-    resp = Response(response=json.dumps(dr_methods), status=200, mimetype="application/json")
-    resp.headers['Access-Control-Allow-Origin'] = '*'
-    return resp
+    return create_cors_response(DR_METHODS)
 
-@app.route('/variables', methods=['GET'])
+@app.route('/variables')
 def list_variables():
-    column_names = ensembleDataFrame.columns.values.tolist()
-    column_names = [e for e in column_names if e not in ('ensemble', 'time', 'name')]
-    resp = Response(response=json.dumps(column_names), status=200, mimetype="application/json")
-    resp.headers['Access-Control-Allow-Origin'] = '*'
-    return resp
+    columns = [col for col in df_manager.ensemble_df.columns 
+              if col not in ('ensemble', 'time', 'name')]
+    return create_cors_response(columns)
 
-@app.route('/dimensional-reduction', methods=['GET'])
-def getEnsembleDR():
-    method = request.args.get('method', default="PCA", type = str)
+@app.route('/dimensional-reduction')
+def get_ensemble_dr():
+    method = request.args.get('method', default="PCA", type=str)
     ensemble_list = request.args.getlist('ensemble')
     simulation_list = request.args.getlist('simulation')
-    print(ensemble_list)
-    print(simulation_list)
-    indexes = ['ensemble', 'time', 'name']
-    filtered_df = ensembleDataFrame[ensembleDataFrame['time'] == 2023]
-    if(len(ensemble_list) != 0):
-        filtered_df = filtered_df[filtered_df['ensemble'].isin(ensemble_list)]
-    if(len(simulation_list) != 0):
-        filtered_df = filtered_df[filtered_df['name'].isin(simulation_list)]
-    data = filtered_df.drop(columns=indexes)
-    identifiers = filtered_df[indexes]
-
+    
+    # Filter data
+    df = df_manager.ensemble_df[df_manager.ensemble_df['time'] == 2023]
+    if ensemble_list:
+        df = df[df['ensemble'].isin(ensemble_list)]
+    if simulation_list:
+        df = df[df['name'].isin(simulation_list)]
+    
+    # Prepare data
+    identifiers = df[['ensemble', 'time', 'name']]
+    data = df.drop(columns=['ensemble', 'time', 'name'])
+    scaled_data = StandardScaler().fit_transform(data)
+    
+    # Apply dimensional reduction
     if method == "PCA":
-        pca = PCA(n_components=2)
-        scaled_data = StandardScaler().fit_transform(data)
-        df = pd.concat([identifiers, pd.DataFrame(pca.fit_transform(scaled_data), columns=['x', 'y'], index=data.index)], axis=1)
-        keep_columns = ['name', 'x', 'y']
-        df['record_object'] = df[keep_columns].to_dict('records')
-        grouped = df.groupby('ensemble')['record_object'].apply(list).to_dict()
-        resp = Response(response=json.dumps(grouped), status=200, mimetype="application/json")
-        resp.headers['Access-Control-Allow-Origin'] = '*'
-        return resp
+        reduced_data = PCA(n_components=2).fit_transform(scaled_data)
     elif method == "UMAP":
-        reducer = umap.UMAP()
-        scaled_data = StandardScaler().fit_transform(data)
-        df = pd.concat([identifiers, pd.DataFrame(reducer.fit_transform(scaled_data), columns=['x', 'y'], index=data.index)], axis=1)
-        keep_columns = ['name', 'x', 'y']
-        df['record_object'] = df[keep_columns].to_dict('records')
-        grouped = df.groupby('ensemble')['record_object'].apply(list).to_dict()
-        resp = Response(response=json.dumps(grouped), status=200, mimetype="application/json")
-        resp.headers['Access-Control-Allow-Origin'] = '*'
-        return resp
-    # TODO: implement the same behavior above for UMAP
-
-    resp = Response(response=data.to_json(orient='index'), status=200, mimetype="application/json")
-    resp.headers['Access-Control-Allow-Origin'] = '*'
-    return resp
-
-@app.route('/temporal-evolution', methods=['GET'])
-def temporalData():
-    aggregate = request.args.get('aggregate', default=False, type = bool)
-    variable = request.args.get('variable', default='', type = str)
-    ensemble_list = request.args.getlist('ensemble')
-    simulation_list = request.args.getlist('simulation')
-    filtered_df = ensembleDataFrame
-    if variable == '':
-        variable = ensembleDataFrame.columns.values.tolist()[-1]
-    if(len(ensemble_list) != 0):
-        filtered_df = filtered_df[filtered_df['ensemble'].isin(ensemble_list)]
-    if(len(simulation_list) != 0):
-        filtered_df = filtered_df[filtered_df['name'].isin(simulation_list)]
-    groupedStates = filtered_df.groupby(['ensemble', 'name'])[['time', variable]].apply(lambda x: x.values.tolist()).to_frame()
-    groupedStates.rename(columns={0: 'points'}, inplace=True)
-
-    # Funcao para transformar o dataframe em um dict hierarquico do formato ensemble -> nome -> lista de pontos
-    def nest(d: dict) -> dict:
-        result = {}
-        for key, value in d.items():
-            target = result
-            for k in key[:-1]:  # traverse all keys but the last
-                target = target.setdefault(k, {})
-            target[key[-1]] = value
-        return result
-
-    nested_dict = {k: nest(v) for k, v in groupedStates.to_dict().items()}
-
-    # TODO: Definir como iremos agregar os dados (estatística? probabilidade?)
-    if aggregate:
-        return "WIP"
+        reduced_data = umap.UMAP().fit_transform(scaled_data)
     else:
-        resp = Response(response=json.dumps(nested_dict['points']), status=200, mimetype="application/json")
-        resp.headers['Access-Control-Allow-Origin'] = '*'
-        return resp
+        return create_cors_response({"error": "Invalid method"}, 400)
+    
+    # Format results
+    result_df = pd.concat([
+        identifiers,
+        pd.DataFrame(reduced_data, columns=['x', 'y'], index=data.index)
+    ], axis=1)
+    
+    result_df['record_object'] = result_df[['name', 'x', 'y']].to_dict('records')
+    grouped = result_df.groupby('ensemble')['record_object'].apply(list).to_dict()
+    
+    return create_cors_response(grouped)
 
-@app.route('/correlation-matrix', methods=['GET'])
-def correlationMatrix():
+@app.route('/temporal-evolution')
+def temporal_data():
+    aggregate = request.args.get('aggregate', default=False, type=bool)
+    variable = request.args.get('variable', default='', type=str)
     ensemble_list = request.args.getlist('ensemble')
     simulation_list = request.args.getlist('simulation')
-    indexes = ['ensemble', 'time', 'name']
-    filtered_df = ensembleDataFrame[ensembleDataFrame['time'] == 2023]
-    if(len(ensemble_list) != 0):
-        filtered_df = filtered_df[filtered_df['ensemble'].isin(ensemble_list)]
-    if(len(simulation_list) != 0):
-        filtered_df = filtered_df[filtered_df['name'].isin(simulation_list)]
-    data = filtered_df.drop(columns=indexes)
-    identifiers = filtered_df[indexes]
+    
+    # Get data
+    df = df_manager.ensemble_df
+    if not variable:
+        variable = df.columns[-1]
+    
+    # Apply filters
+    if ensemble_list:
+        df = df[df['ensemble'].isin(ensemble_list)]
+    if simulation_list:
+        df = df[df['name'].isin(simulation_list)]
+    
+    # Group data and convert to a serializable format
+    result = {}
+    for ensemble_name, ensemble_group in df.groupby('ensemble'):
+        result[ensemble_name] = {}
+        for name, group in ensemble_group.groupby('name'):
+            result[ensemble_name][name] = group[['time', variable]].values.tolist()
+    
+    if aggregate:
+        return create_cors_response({"message": "Aggregation not implemented"}, 501)
+    
+    return create_cors_response(result)
+
+@app.route('/correlation-matrix')
+def correlation_matrix():
+    ensemble_list = request.args.getlist('ensemble')
+    simulation_list = request.args.getlist('simulation')
+    
+    # Filter data
+    df = df_manager.ensemble_df[df_manager.ensemble_df['time'] == 2023]
+    if ensemble_list:
+        df = df[df['ensemble'].isin(ensemble_list)]
+    if simulation_list:
+        df = df[df['name'].isin(simulation_list)]
+    
+    # Calculate correlation matrix
+    data = df.drop(columns=['ensemble', 'time', 'name'])
     correlation_matrix = data.corr().dropna(axis=0, how='all').dropna(axis=1, how='all')
-    resp = Response(response=correlation_matrix.to_json(orient='index'), status=200, mimetype="application/json")
-    resp.headers['Access-Control-Allow-Origin'] = '*'
-    return resp
+    
+    return create_cors_response(correlation_matrix.to_json(orient='index'))
+
+if __name__ == '__main__':
+    app.run(debug=True)

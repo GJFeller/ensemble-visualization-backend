@@ -4,7 +4,6 @@ numpy
 pandas
 scikit_learn
 umap_learn
-surrealdb
 daal4py
 ruamel-yaml
 pymonetdb
